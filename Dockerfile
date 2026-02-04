@@ -1,21 +1,42 @@
+# 3DCityDB with Patched SFCGAL for CityGML Volume Calculations
+# 
+# This Dockerfile creates a 3DCityDB image with a patched SFCGAL library
+# that fixes geometry validation errors common in LOD2 CityGML data.
+# 
+# Based on: ghcr.io/3dcitydb/3dcitydb-pg:5.0.0
+# SFCGAL Version: 1.5.2 (patched)
+# CGAL Version: 5.6
+
 FROM ghcr.io/3dcitydb/3dcitydb-pg:5.0.0
+
+LABEL maintainer="Khaoula Kanna <khaoula.kanna@tum.de>"
+LABEL description="3DCityDB with patched SFCGAL for CityGML geometric calculations"
+LABEL version="1.0"
 
 USER root
 
+# Install build dependencies
 RUN apt-get update && apt-get install -y \
-    build-essential cmake libboost-all-dev \
-    libgmp-dev libmpfr-dev git \
+    build-essential \
+    cmake \
+    libboost-all-dev \
+    libgmp-dev \
+    libmpfr-dev \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
+# Remove existing SFCGAL libraries
 RUN find /usr -name "libSFCGAL*" -exec rm -f {} \; 2>/dev/null || true
 RUN find /lib -name "libSFCGAL*" -exec rm -f {} \; 2>/dev/null || true
 
+# Install CGAL 5.6
 WORKDIR /tmp
 RUN git clone --branch v5.6 --depth 1 https://github.com/CGAL/cgal.git \
     && cd cgal \
     && cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
     && cmake --install build
 
+# Clone SFCGAL
 RUN git clone https://gitlab.com/sfcgal/SFCGAL.git
 WORKDIR /tmp/SFCGAL
 RUN git checkout v1.5.2 || git checkout v1.5.1 || git checkout master
