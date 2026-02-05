@@ -107,4 +107,6 @@ RUN rm -rf /tmp/SFCGAL /tmp/cgal \
     && apt-get purge -y build-essential cmake git \
     && apt-get autoremove -y
 
+WORKDIR /3dcitydb
+
 USER postgres
