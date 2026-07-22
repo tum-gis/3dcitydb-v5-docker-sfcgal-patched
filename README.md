@@ -39,14 +39,14 @@ This Docker image contains a patched version of SFCGAL that:
 
 ### Using Pre-built Image from Docker Hub
 ```bash
-docker pull khaoulakanna1/3dcitydb-v5-docker-sfcgal-patched:v2.0
+docker pull khaoulakanna1/3dcitydb-v5-docker-sfcgal-patched:v2.3.0
 ```
 
 > 📌 **Versions at a glance:**
 > | Tag | PostgreSQL | PostGIS | SFCGAL | 3DCityDB schema | Base image |
 > |---|---|---|---|---|---|
 > | `v1.0` | 17 | 3.5 | 1.5.2 (patched) | 5.0.0 | `ghcr.io/3dcitydb/3dcitydb-pg:5.0.0` |
-> | `v2.0` (current) | 18 | 3.6.2 | 2.0.0 (patched) | 5.1.3 | `3dcitydb/3dcitydb-pg:edge` |
+> | `v2.3.0` (current) | 18 | 3.6.2 | 2.3.0 (patched) | 5.1.3 | `3dcitydb/3dcitydb-pg:edge` |
 >
 > If you have an existing `v1.0` deployment, **do not** swap the image in place on the same volume — PostgreSQL major-version data directories are not cross-compatible. See [Upgrading from v1.0](#-upgrading-from-v10) below.
 
