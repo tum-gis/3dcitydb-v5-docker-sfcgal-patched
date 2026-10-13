@@ -1,4 +1,4 @@
-FROM 3dcitydb/3dcitydb-pg:edge
+FROM 3dcitydb/3dcitydb-pg:latest
 
 USER root
 

@@ -37,16 +37,27 @@ This Docker image contains a patched version of SFCGAL that:
 
 ## 📦 Quick Start
 
-### Using Pre-built Image from Docker Hub
+### Using Pre-built Image from GitHub Container Registry
+
+The image is built and published automatically by GitHub Actions on every push/tag to this
+repository, stored in the **GitHub Container Registry (GHCR)** under this repo:
+
 ```bash
-docker pull khaoulakanna1/3dcitydb-v5-docker-sfcgal-patched:v2.3.0
+# For a public repo this works without authentication; for private repos you need to
+# `docker login ghcr.io` first (use a token with `read:packages` scope).
+docker pull ghcr.io/tum-gis/3dcitydb-v5-docker-sfcgal-patched:v2.3.0
 ```
+
+Available tags (produced by the release workflow):
+- `latest` — always the default branch
+- `vX.Y.Z` / `X.Y` — from `v*` semver tags
+- `<git-sha>` — the exact commit that was built
 
 > 📌 **Versions at a glance:**
 > | Tag | PostgreSQL | PostGIS | SFCGAL | 3DCityDB schema | Base image |
 > |---|---|---|---|---|---|
 > | `v1.0` | 17 | 3.5 | 1.5.2 (patched) | 5.0.0 | `ghcr.io/3dcitydb/3dcitydb-pg:5.0.0` |
-> | `v2.3.0` (current) | 18 | 3.6.2 | 2.3.0 (patched) | 5.1.3 | `3dcitydb/3dcitydb-pg:edge` |
+> | `v2.3.0` (current) | 18 | 3.6.2 | 2.3.0 (patched) | 5.1.3 | `3dcitydb/3dcitydb-pg:latest` |
 >
 > If you have an existing `v1.0` deployment, **do not** swap the image in place on the same volume — PostgreSQL major-version data directories are not cross-compatible. See [Upgrading from v1.0](#-upgrading-from-v10) below.
 
@@ -62,7 +73,7 @@ volumes:
 
 services:
   3dcitydb:
-    image: khaoulakanna1/3dcitydb-v5-docker-sfcgal-patched:v2.0
+    image: ghcr.io/tum-gis/3dcitydb-v5-docker-sfcgal-patched:v2.3.0
     container_name: 3dcitydb
     volumes:
       # NOTE: PG18 mounts at /var/lib/postgresql, NOT /var/lib/postgresql/data
@@ -169,7 +180,7 @@ docker run --rm 3dcitydb-v5-docker-sfcgal-patched:latest cat /3dcitydb/version.t
 ```
 You should see a `sql-scripts/` folder and `version.txt`, and **no** `CITYDB_PKG` directory.
 
-> ⚠️ **Base image tag matters:** `3dcitydb/3dcitydb-pg:latest` and `:edge` are not interchangeable. At the time of writing, `latest` still ships the legacy v4.x schema, while `edge` ships the active v5.x development schema that this Dockerfile is built against. If you change the base image tag, re-run the check above.
+> ℹ️ **Base image tag:** `3dcitydb/3dcitydb-pg:latest` now points to the latest stable 3DCityDB V5 release and is what this Dockerfile is built against. (The older `:edge` tag tracked the v5.x development line; `:latest` has since been aligned to the V5 release.) If you change the base image tag, re-run the check above.
 
 4. **Verify SFCGAL loaded correctly:**
 ```bash
@@ -278,7 +289,7 @@ For most CityGML LOD2 data from authoritative sources (e.g., German cadastral da
 ## 🔧 Technical Details
 
 ### Base Image
-- `3dcitydb/3dcitydb-pg:edge` (Debian 13 "trixie")
+- `3dcitydb/3dcitydb-pg:latest` (latest stable 3DCityDB V5 release, Debian 13 "trixie")
 
 ### Compiled Libraries
 - **CGAL**: 5.6
@@ -320,7 +331,7 @@ Your `citydb-tool` version is older than the schema version this image ships. Us
 
 ### Issue: Database has the wrong schema version after first boot (e.g. shows v4.4.0 unexpectedly)
 
-This means the base image tag used (`latest` vs `edge`) doesn't ship the schema version you expected — schema init only runs once on a fresh volume, so once it's wrong you must wipe the volume and start over with the correct base image tag (see the base-image-tag warning under "Building the Image Yourself").
+This means the base image tag used doesn't ship the schema version you expected — schema init only runs once on a fresh volume, so once it's wrong you must wipe the volume and start over with the correct base image tag (see the base-image-tag note under "Building the Image Yourself").
 
 ### Issue: Volume returns NULL for a building even with the patch applied
 
