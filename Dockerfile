@@ -74,8 +74,49 @@ RUN echo "=== ldconfig resolution ===" && ldconfig -p | grep -i sfcgal
 RUN echo "=== Self-intersect strings remaining in compiled lib ===" && \
     strings /usr/lib/x86_64-linux-gnu/libSFCGAL.so.2 | grep -ci "self intersect" || echo "0 occurrences - clean!"
 
+# ============================================
+# Rebuild PostGIS from source against SFCGAL 2.3.0
+#
+# The base image ships PostGIS 3.6.4 as a pgdg binary compiled against
+# SFCGAL 2.0.0, so PostGIS's version gates
+# (#if POSTGIS_SFCGAL_VERSION < 20100 / < 20200 / < 20300) keep the newer
+# SFCGAL functions disabled. Rebuilding PostGIS from source against the
+# SFCGAL 2.3.0 headers installed above (sfcgal-config reports 2.3.0 ->
+# POSTGIS_SFCGAL_VERSION 20300) re-enables them:
+#   CG_Simplify, CG_3DAlphaWrapping            (need SFCGAL >= 2.1.0)
+#   CG_ExtrudeStraightSkeleton, CG_Visibility  (need SFCGAL >= 2.2.0)
+#   CG_Tesselate                              (need SFCGAL >= 2.3.0)
+#
+# This MUST run before the cleanup step below, which purges
+# build-essential/cmake/git (all needed here) while still root.
+# ============================================
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential autoconf automake libtool pkg-config cmake git \
+    libgeos-dev libproj-dev libxml2-dev \
+    libprotobuf-dev libprotobuf-c-dev protobuf-c-compiler protobuf-compiler \
+    libjson-c-dev libpcre2-dev libgdal-dev libsqlite3-dev \
+    postgresql-server-dev-18 \
+    && echo "sfcgal-config reports: $(sfcgal-config --version)" \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /tmp
+RUN git clone --branch 3.6.4 --depth 1 https://github.com/postgis/postgis.git \
+    && cd postgis \
+    && ./autogen.sh \
+    && ./configure \
+        --prefix=/usr \
+        --with-sfcgal \
+        --with-geos \
+        --with-proj \
+        --with-gdal \
+        --without-libzip \
+    && grep -a "define POSTGIS_SFCGAL_VERSION" postgis_config.h \
+    && make -j$(nproc) \
+    && make install \
+    && ldconfig
+
 WORKDIR /
-RUN rm -rf /tmp/SFCGAL /tmp/cgal \
+RUN rm -rf /tmp/SFCGAL /tmp/cgal /tmp/postgis \
     && apt-get purge -y build-essential cmake git \
     && apt-get autoremove -y
 

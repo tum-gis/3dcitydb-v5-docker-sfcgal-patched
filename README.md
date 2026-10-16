@@ -34,6 +34,10 @@ This Docker image contains a patched version of SFCGAL that:
 1. **Relaxes planarity tolerance** from `1e-9` to `1e-2`
 2. **Disables self-intersection checks** at the function-definition level (`selfIntersectsImpl<2>`/`<3>` forced to `false` in `intersects.cpp`), so the fix applies consistently regardless of which validation path calls into it
 3. **Strips validity assertions** (`SFCGAL_ASSERT_GEOMETRY_VALIDITY`, `_2D`, `_3D`, `_ON_PLANE`) from every file under `src/algorithm/`, so `CG_Volume`, `CG_3DArea`, `CG_Distance`, and `CG_3DDistance` no longer short-circuit on minor geometry defects
+4. **Rebuilds PostGIS 3.6.4 from source against SFCGAL 2.3.0.** The base image ships PostGIS as a binary compiled against SFCGAL 2.0.0, which disables the newer SFCGAL functions via PostGIS's `#if POSTGIS_SFCGAL_VERSION < …` gates. Rebuilding against the 2.3.0 headers (→ `POSTGIS_SFCGAL_VERSION = 20300`) re-enables them:
+   - `CG_Simplify`, `CG_3DAlphaWrapping` (need SFCGAL ≥ 2.1.0)
+   - `CG_ExtrudeStraightSkeleton`, `CG_Visibility` (need SFCGAL ≥ 2.2.0)
+   - `CG_Tesselate` (need SFCGAL ≥ 2.3.0)
 
 ## 📦 Quick Start
 
@@ -57,7 +61,7 @@ Available tags (produced by the release workflow):
 > | Tag | PostgreSQL | PostGIS | SFCGAL | 3DCityDB schema | Base image |
 > |---|---|---|---|---|---|
 > | `v1.0` | 17 | 3.5 | 1.5.2 (patched) | 5.0.0 | `ghcr.io/3dcitydb/3dcitydb-pg:5.0.0` |
-> | `v2.3.0` (current) | 18 | 3.6.2 | 2.3.0 (patched) | 5.1.3 | `3dcitydb/3dcitydb-pg:latest` |
+> | `v2.3.0` (current) | 18 | 3.6.4 (recompiled vs. SFCGAL 2.3.0) | 2.3.0 (patched) | 5.1.3 | `3dcitydb/3dcitydb-pg:latest` |
 >
 > If you have an existing `v1.0` deployment, **do not** swap the image in place on the same volume — PostgreSQL major-version data directories are not cross-compatible. See [Upgrading from v1.0](#-upgrading-from-v10) below.
 
@@ -171,7 +175,7 @@ cd 3dcitydb-v5-docker-sfcgal-patched
 docker build --platform linux/amd64 -t 3dcitydb-v5-docker-sfcgal-patched:latest .
 ```
 
-> ⏱️ **Note:** The build process takes approximately 10-15 minutes natively (longer under emulation) as it compiles CGAL 5.6 and SFCGAL 2.0.0 from source.
+> ⏱️ **Note:** The build process takes approximately 20-30 minutes natively (much longer under emulation) as it compiles CGAL 5.6, SFCGAL 2.3.0, **and PostGIS 3.6.4** from source (the PostGIS rebuild links the new SFCGAL 2.3.0 functions — see [SFCGAL version gates](#sfcgal-version-gates)).
 
 3. **Verify the build picked up the v5 schema (not the legacy v4 `CITYDB_PKG` layout):**
 ```bash
@@ -293,11 +297,11 @@ For most CityGML LOD2 data from authoritative sources (e.g., German cadastral da
 
 ### Compiled Libraries
 - **CGAL**: 5.6
-- **SFCGAL**: 2.0.0 (patched, built from the official [SFCGAL GitLab repo](https://gitlab.com/sfcgal/SFCGAL) tag `v2.0.0`)
+- **SFCGAL**: 2.3.0 (patched, built from the official [SFCGAL GitLab repo](https://gitlab.com/sfcgal/SFCGAL) tag `v2.3.0`)
 
 ### PostgreSQL / PostGIS
 - PostgreSQL 18
-- PostGIS 3.6.2 with SFCGAL support
+- PostGIS 3.6.4, **rebuilt from source against SFCGAL 2.3.0** so the SFCGAL 2.1.0/2.2.0/2.3.0 functions (`CG_Simplify`, `CG_3DAlphaWrapping`, `CG_ExtrudeStraightSkeleton`, `CG_Visibility`, `CG_Tesselate`) are enabled — see [SFCGAL version gates](#sfcgal-version-gates)
 - 3DCityDB schema v5.1.3
 
 ### Patch Locations (for reference / re-applying to future SFCGAL versions)
@@ -308,6 +312,27 @@ For most CityGML LOD2 data from authoritative sources (e.g., German cadastral da
 | `src/algorithm/*.cpp` (all) | `SFCGAL_ASSERT_GEOMETRY_VALIDITY*(...)` calls stripped via `find`/`sed` |
 
 > Note: file layout can change between SFCGAL major versions — e.g. `isSimple.cpp`/`isSimple.h` existed in the 1.x line but were removed/merged by 2.0.0. If rebuilding against a newer SFCGAL tag, re-verify these paths exist before assuming the patch applied (the Dockerfile includes `echo`/`grep` verification steps for this).
+
+### SFCGAL version gates
+
+PostGIS gates its SFCGAL wrappers at **compile time** with `#if POSTGIS_SFCGAL_VERSION < N`. `POSTGIS_SFCGAL_VERSION` is baked in from `sfcgal-config --version` when PostGIS is compiled, so a PostGIS binary built against an older SFCGAL silently **disables** the newer functions even if a newer `libSFCGAL.so` is loaded at runtime (and `postgis_sfcgal_full_version()` will still report the loaded 2.3.0 library, which is why this is easy to miss).
+
+The base `3dcitydb-pg` image's PostGIS was compiled against SFCGAL 2.0.0 (`POSTGIS_SFCGAL_VERSION = 20000`), so these functions returned the error *"…doesn't support … (requires SFCGAL 2.x.0+)"*. This image rebuilds PostGIS 3.6.4 against SFCGAL 2.3.0 (`= 20300`), enabling:
+
+| Function | Requires | Example |
+|---|---|---|
+| `CG_Simplify(geom, tolerance)` | SFCGAL ≥ 2.1.0 | `SELECT ST_AsText(CG_Simplify(g, 0.5));` |
+| `CG_3DAlphaWrapping(geom, relative_alpha, relative_offset)` | SFCGAL ≥ 2.1.0 | `SELECT ST_AsText(CG_3DAlphaWrapping(g, 1, 0));` |
+| `CG_ExtrudeStraightSkeleton(geom, h1, h2, h3)` | SFCGAL ≥ 2.2.0 | see [docs](https://postgis.net/docs/reference.html#reference_sfcgal) |
+| `CG_Visibility(geom, point, segment)` | SFCGAL ≥ 2.2.0 | see [docs](https://postgis.net/docs/reference.html#reference_sfcgal) |
+| `CG_Tesselate(geom, tolerance)` | SFCGAL ≥ 2.3.0 | see [docs](https://postgis.net/docs/reference.html#reference_sfcgal) |
+
+To confirm the effective compile-time version inside a running container:
+
+```sql
+SELECT postgis_sfcgal_full_version();   -- loaded lib (2.3.0)
+```
+and, on the host: `strings /usr/lib/postgresql/18/lib/postgis_sfcgal-3.so | grep -i sfcgal` will show `20300` in the built image (vs `20000` in the stock base image).
 
 ## 🐛 Troubleshooting
 
